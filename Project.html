@@ -1,0 +1,765 @@
+﻿<!DOCTYPE html>
+
+<head>
+	<meta charset="utf-8"/>
+	<title>Не се сърди човече - курсов проект по WebGL</title>
+
+	<script src="webgl-fmi.js"></script>
+	<script src="shaders.js"></script>
+	<script src="objects.js"></script>
+	<script src="events.js"></script>
+	<script src="constantsGlobalVars.js"></script>
+
+	<style>
+		body {
+			font-variant: small-caps;
+			font-family:'Trebuchet MS', 'Lucida Sans Unicode', 'Lucida Grande', 'Lucida Sans', Arial, sans-serif;
+			text-align: center;
+		}
+
+		#resetBtn {
+			width: 90%;
+			padding: 0px;
+			margin-top: 3%;
+			display: flex;
+			border: none;
+			border-radius: 0.2em;
+			background-color:darkgreen;
+			color:aliceblue;
+			padding: 0.5em;
+			font-size:x-large;
+			text-align: center;
+			font-variant: small-caps;
+		}
+
+		select {
+			width: 90%;
+			margin-top: 3%;
+			display: flex;
+			align-items: flex-start;
+			border: none;
+			border-radius: 0.2em;
+			background-color: azure;
+			color: cadetblue;
+			padding: 0.5em;
+			font-size:x-large;
+			font-variant: small-caps;
+		}
+
+		canvas {
+			border: solid 0.5em rgb(88, 224, 255);
+			cursor: crosshair;
+		}
+	</style>
+	
+	<script>
+		
+		tiles = [];
+		pawns = [];
+
+		function start( )
+		{
+			var	canvas = document.getElementById("picasso");
+			canvas.addEventListener('webglcontextlost',function(event){event.preventDefault();},false);
+			canvas.addEventListener('webglcontextrestored',init,false);
+			
+			// прехващане на мишката само над графичното поле
+			canvas.addEventListener('click',click,false);
+			canvas.addEventListener('mousemove',mouseMove,false);
+			canvas.addEventListener('mousedown',mouseDown,false);
+			canvas.addEventListener('mouseup',mouseUp,false);
+			canvas.addEventListener('mouseout',mouseUp,false);
+			
+			// изключване на контекстното меню
+			canvas.addEventListener('contextmenu',function(e){e.preventDefault();},false);
+
+			init();
+			drawFrame();
+		}		
+
+		function setSceneColors(sceneType) {
+			RED = sceneColors[sceneType][0];
+			BLUE = sceneColors[sceneType][1];
+			GREEN = sceneColors[sceneType][2];
+			YELLOW = sceneColors[sceneType][3];
+
+			sky[0].texture = skyTextures[scene*6+0];
+			sky[1].texture = skyTextures[scene*6+1];
+			sky[2].texture = skyTextures[scene*6+2];
+			sky[3].texture = skyTextures[scene*6+3];
+			sky[4].texture = skyTextures[scene*6+4];
+			sky[5].texture = skyTextures[scene*6+5];
+
+			if (scene == 0){
+				ground.texture = textures[0];
+			}
+			else if (scene == 1){
+				ground.texture = textures[2];
+			}	
+			else if (scene == 2){
+				ground.texture = textures[3];
+			}
+
+			for(i=0; i<16; i++){
+				if(i<4){
+					pawns[i].pawnHead.color = RED;
+					pawns[i].pawnBody.color = [RED, RED];
+				}
+				else if(i<8){
+					pawns[i].pawnHead.color = BLUE;
+					pawns[i].pawnBody.color = [BLUE, BLUE];
+				}
+				else if(i<12){
+					pawns[i].pawnHead.color = GREEN;
+					pawns[i].pawnBody.color = [GREEN, GREEN];
+				}
+				else {
+					pawns[i].pawnHead.color = YELLOW;
+					pawns[i].pawnBody.color = [YELLOW, YELLOW];
+				}
+			}
+
+			for(i=56;i<76;i++){
+				if(i<=60){
+					tiles[i].tile.color = YELLOW;
+				}
+				else if(i<=65){
+					tiles[i].tile.color = GREEN;
+				}
+				else if(i<=70){
+					tiles[i].tile.color = RED;
+				}
+				else {
+					tiles[i].tile.color = BLUE;
+				}
+			}
+		}
+
+		function setPawnPosistion(pawn, position){
+			pawn.pawnHead.center = [position[0], position[1], position[2]+1.5];
+			pawn.pawnBody.center = position;
+		}
+
+		function movePawn(pawn, oldPos, newPos, phase) {
+			let dist = Math.sqrt(Math.pow((newPos[0]-oldPos[0]),2)+Math.pow((newPos[1]-oldPos[1]),2));
+			let xPos = oldPos[0]+(newPos[0]-oldPos[0])*phase;
+			let yPos = oldPos[1]+(newPos[1]-oldPos[1])*phase;
+			let zPos = oldPos[2]+(newPos[2]-oldPos[2])*phase + dist*sin(phase*PI);
+			let pawnPosition = [xPos, yPos, zPos];
+			setPawnPosistion(pawn, pawnPosition);
+		}
+
+		function getSelectable(selectable, pawns, color, points) {
+			for(i = 0; i < 16; i++){
+				var pawnColor;
+				switch(color){
+					case "RED":
+						pawnColor = RED;
+						break;
+					case "GREEN":
+						pawnColor = GREEN;
+						break;
+					case "YELLOW":
+						pawnColor = YELLOW;
+						break;
+					case "BLUE":
+						pawnColor = BLUE;
+						break;
+				}
+				if(pawns[i].pawnHead.color == pawnColor) {
+					if(pawns[i].tile + points <= 60){
+						switch(color){
+							case "RED":
+								if(pawns[i].tile == -1){
+									if(points == 6){
+										selectable.push([i,RED_PATH[0]]);
+									}
+								}
+								else {
+									selectable.push([i,RED_PATH[pawns[i].tile + points]]);
+								}
+								break;
+							case "GREEN":
+							if(pawns[i].tile == -1){
+									if(points == 6){
+										selectable.push([i,GREEN_PATH[0]]);
+									}
+								}
+								else {
+									selectable.push([i,GREEN_PATH[pawns[i].tile + points]]);
+								}
+								break;
+							case "YELLOW":
+							if(pawns[i].tile == -1){
+									if(points == 6){
+										selectable.push([i,YELLOW_PATH[0]]);
+									}
+								}
+								else {
+									selectable.push([i,YELLOW_PATH[pawns[i].tile + points]]);
+								}
+								break;
+							case "BLUE":
+							if(pawns[i].tile == -1){
+								if(points == 6){
+									selectable.push([i,BLUE_PATH[0]]);
+								}
+							}
+							else {
+								selectable.push([i,BLUE_PATH[pawns[i].tile + points]]);
+							}
+							break;
+						}
+					}
+				}
+			}
+		}
+
+		function isSelectable(tile) {
+			for(i = 0; i < selectable.length; i++) {
+				if(selectable[i][1] == tile)	return true;
+			}
+			return false;
+		}
+		
+		function isPawnAhead(pawn) {
+			let allNext = [];
+			let nextTile;
+			switch(turn){
+				case "RED":nextTile = RED_PATH[pawn.tile+1];break;
+				case "GREEN":nextTile = GREEN_PATH[pawn.tile+1];break;
+				case "YELLOW":nextTile = YELLOW_PATH[pawn.tile+1];break;
+				case "BLUE":nextTile = BLUE_PATH[pawn.tile+1];break;
+			}
+			for(var i = 0; i < pawns.length; i++){
+				switch(pawns[i].pawnBody.color[0]){
+					case RED:
+						if(RED_PATH[pawns[i].tile] == nextTile){
+							allNext.push(i);
+						}
+						break;
+					case GREEN:
+						if(GREEN_PATH[pawns[i].tile] == nextTile){
+							allNext.push(i);
+						}
+						break;
+					case YELLOW:
+						if(YELLOW_PATH[pawns[i].tile] == nextTile){
+							allNext.push(i);
+						}
+						break;
+					case BLUE:
+						if(BLUE_PATH[pawns[i].tile] == nextTile){
+							allNext.push(i);
+						}
+						break;
+				}
+			}
+			return allNext;
+		}
+
+		function init()
+		{
+			gl = getContext("picasso");
+			glprog = getProgram(vShader,fShader);
+			//glSky = getProgram(vShaderSky, fShaderSky);
+			getVariables();
+
+			gl.enable(gl.DEPTH_TEST);
+			gl.clearColor(0.9,1,0.9,1);
+
+			identity();
+			perspective(30,gl.canvas.width/gl.canvas.height,1,40000);
+			gl.uniform1i(uUseNormalMatrix,false);
+
+			gl.uniform3f(uAmbientColor,0.7,0.7,0.7);
+			gl.uniform3f(uDiffuseColor,0.7,0.7,0.7);
+			gl.uniform3f(uLightDir,1,-1,-1);
+
+			gl.uniform1i(uSampler, 0);
+			gl.activeTexture(gl.TEXTURE0);
+
+			
+			// зареждане на 6-те текстури
+			skyTextures = [
+				loadTexture('background/px0.png'),
+				loadTexture('background/ny0.png'),
+				loadTexture('background/nx0.png'),
+				loadTexture('background/py0.png'),
+				loadTexture('background/pz0.png'),
+				loadTexture('background/nz0.png'),
+				loadTexture('background/px1.png'),
+				loadTexture('background/ny1.png'),
+				loadTexture('background/nx1.png'),
+				loadTexture('background/py1.png'),
+				loadTexture('background/pz1.png'),
+				loadTexture('background/nz1.png'),
+				loadTexture('background/px2.png'),
+				loadTexture('background/ny2.png'),
+				loadTexture('background/nx2.png'),
+				loadTexture('background/py2.png'),
+				loadTexture('background/pz2.png'),
+				loadTexture('background/nz2.png')
+			];
+			
+			textures = [];
+			textures.push(loadTexture('grass.jpg'));
+			textures.push(loadTexture('default.jpg'));
+			textures.push(loadTexture('sand.jpg'));
+			textures.push(loadTexture('mountain.jpg'));
+			
+			sky = [
+				new Cuboid([0,0,0],[0.1,120,120]),//px
+				new Cuboid([0,0,0],[120,0.1,120]),//ny
+				new Cuboid([0,0,0],[0.1,120,120]),//nx
+				new Cuboid([0,0,0],[120,0.1,120]),//py
+				new Cuboid([0,0,0],[120,120,0.1]),//pz
+				new Cuboid([0,0,0],[120,120,0.1])//nz
+			];
+			sky[0].texture = skyTextures[scene*6+0];
+			sky[0].color = [1,1,1];
+			sky[1].texture = skyTextures[scene*6+1];
+			sky[1].color = [1,1,1];
+			sky[2].texture = skyTextures[scene*6+2];
+			sky[2].color = [1,1,1];
+			sky[3].texture = skyTextures[scene*6+3];
+			sky[3].color = [1,1,1];
+			sky[4].texture = skyTextures[scene*6+4];
+			sky[4].color = [1,1,1];
+			sky[5].texture = skyTextures[scene*6+5];
+			sky[5].color = [1,1,1];
+			ground = new Cuboid([0,0,-0.6],[20,20,1]);
+			ground.color = [1,1,1];
+			if (scene == 0){
+				ground.texture = textures[0];
+			}
+			else if (scene == 1){
+				ground.texture = textures[2];
+			}
+			else if (scene == 2){
+				ground.texture = textures[3];
+			}
+
+			buildTiles();
+			buildPawns();			
+			die = new Die();		
+		}
+
+		function switchProgram(prog, x, y, z)
+		{
+			// правим желатана програма активна
+			glprog = prog; 
+			gl.useProgram(glprog);
+			getVariables();
+
+			lookAt([x,y,z],[0,0,0],[0,0,1]);
+			identity();
+			perspective(30,gl.canvas.width/gl.canvas.height,1,40000);
+
+			// задаваме гледната точка и перспективата
+		}
+		
+		selectable = [];
+		var selectedTile;
+		var selectedPawn;
+
+		var destinationTile;
+
+		var x = 0;
+		var diePoints = 1;
+		var startTime = x;
+		var rotations = 15;
+		var rotAxis = 2;
+		var oldRot = [0,0,0];
+
+		var moves = 1;
+
+		function drawFrame()
+		{			
+			time = now();
+			dT = time-oldTime;
+			oldTime += dT;
+			x+=dT;
+			
+			var k = 2*dT; if (k>1) k=1;
+			realA = realA*(1-k)+k*viewA;
+			realB = realB*(1-k)+k*viewB;
+			realD = realD*(1-k)+k*viewD;
+			lookAt([0,0,0],[-(realD+1)*cos(realA)*cos(realB),-(realD+1)*sin(realA)*cos(realB),-(realD+1)*sin(realB)],[0,0,1]);
+			//lookAt([-20,-20,2],[0,0,3],[0,0,1]);
+			//lookAt([1,0,55],[0,0,3],[0,0,1]);
+			passedTime+=dT;
+			pushMatrix();
+			translate([-(realD+1)*cos(realA)*cos(realB),-(realD+1)*sin(realA)*cos(realB),-(realD+1)*sin(realB)]);
+			zRotate(realA*180/Math.PI);
+			if(mode == MODE.SELECT) {
+				getSelectable(selectable, pawns, turn, moves);
+				
+				// режим на плосък цвят - изчистваме буфера
+				gl.uniform1i(uSelectMode,true);
+				gl.clearColor(0,0,0,1);
+				gl.clear(gl.COLOR_BUFFER_BIT+gl.DEPTH_BUFFER_BIT);
+	
+				// рисуваме обектите
+				for (var i=0; i<tiles.length; i++)
+				{
+					gl.uniform3fv(uSelectColor,tiles[i].tile.selectColor);
+					tiles[i].draw();
+				}
+				
+				// четем цветовете на 2х2 пиксела
+				gl.readPixels(mouseX, mouseY, 2, 2, gl.RGBA, gl.UNSIGNED_BYTE, pixelValues);
+				
+				// намираме кой обект е закодиран и в 4-те пиксела
+				var selected = -1;
+				if (pixelValues[0]==pixelValues[4] && pixelValues[0]==pixelValues[8] && pixelValues[0]==pixelValues[12] && pixelValues[2]==255)
+				selected = pixelValues[0];
+
+				// нормален режим - изчистваме буфера от плоските цветове
+				gl.uniform1i(uSelectMode,false);
+				gl.clearColor(0.3,0.7,1.0,1);
+				gl.clear(gl.COLOR_BUFFER_BIT+gl.DEPTH_BUFFER_BIT);
+				
+				// рисуваме обектите с истинските им цветове,
+				//като само избраният обект (ако го има) е червен
+				for (var i=0; i<tiles.length; i++)
+				{
+					if (isSelectable(i)) {
+						tiles[i].tile.color=[tiles[i].tile.color[0]+0.1,tiles[i].tile.color[1]+0.1,tiles[i].tile.color[2]+0.1];
+						if (i == selected) {
+							tiles[i].tile.color=[tiles[i].tile.color[0]+0.3,tiles[i].tile.color[1]+0.3,tiles[i].tile.color[2]+0.3];
+						}
+						tiles[i].draw();
+						tiles[i].tile.color=[tiles[i].tile.color[0]-0.1,tiles[i].tile.color[1]-0.1,tiles[i].tile.color[2]-0.1];
+						if (i == selected) {
+							tiles[i].tile.color=[tiles[i].tile.color[0]-0.3,tiles[i].tile.color[1]-0.3,tiles[i].tile.color[2]-0.3];
+						}
+					}
+					else {
+						tiles[i].draw();
+					}
+				}
+				
+				if(selectable.length == 0){
+					moves = 0;
+					startTime = x;
+					mode = MODE.MOVE;
+				}
+				
+				if(clicked){
+					for(i=0; i<selectable.length;i++){
+						if(selectable[i][1]==selected){
+							startTime = x;
+							mode = MODE.MOVE;
+							selectedPawn = selectable[i][0];
+							destinationTile = pawns[selectedPawn].tile+1;
+							if(points > 1 && isPawnAhead(pawns[selectedPawn]).length > 0){
+								destinationTile = pawns[selectedPawn].tile+2;
+								moves--;
+							}
+							break;
+						}
+					}
+					selectedTile = selected;
+					selectable = [];
+					clicked = false;
+				}
+				
+				die.draw();
+			}
+			
+			else if (mode == MODE.THROWDIE) {
+				gl.clearColor(0.3,0.7,1.0,1);
+				gl.clear(gl.COLOR_BUFFER_BIT+gl.DEPTH_BUFFER_BIT);
+				for (var i=0; i<tiles.length; i++)
+				{
+					tiles[i].draw();
+				}					
+				die.draw();
+				if(rotations == 0){
+					die.rot = oldRot;
+					die.rot = [Math.floor(die.rot[0]%360), Math.floor(die.rot[1]%360), Math.floor(die.rot[2]%360)];
+					if ((die.rot[0] == 0 && die.rot[1] == 0) || (die.rot[0] == 180 && die.rot[1] == 180)){
+						points = 1;
+					}
+					else if ((die.rot[0] == 0 && die.rot[1] == 180) || (die.rot[0] == 180 && die.rot[1] == 0)) {
+						points = 6;
+					}
+					else if ((die.rot[0] == 90 && die.rot[2] == 270) || (die.rot[0] == 270 && die.rot[2] == 90)) {
+						points = 2;
+					}
+					else if ((die.rot[0] == 90 && die.rot[2] == 180) || (die.rot[0] == 270 && die.rot[2] == 0)) {
+						points = 3;
+					}
+					else if ((die.rot[0] == 90 && die.rot[2] == 0) || (die.rot[0] == 270 && die.rot[2] == 180)) {
+						points = 4;
+					}
+					else if (die.rot[0] == die.rot[2] && (die.rot[0] == 90 || die.rot[0] == 270)) {
+						points = 5;
+					}
+					else {
+						points = checkSpecialCases(die.rot);
+					}
+					console.log(points);
+					phase = 0;
+					clicked = false;
+					mode = MODE.SELECT;
+					moves = points;
+					startTime = x;
+				}
+				else if (clicked == true) {
+					if(phase >= 1){
+						oldRot[rotAxis] += 90;
+						if(oldRot[0]%360 == 0 && oldRot[1]%360 == 0){
+							points = 1;
+						}
+					if(rotAxis == 0){
+						rotAxis = Math.floor(random(1,2));
+					}
+					else if(rotAxis == 1){
+						rotAxis = Math.floor(random(0,1)*2);
+					}
+					else if(rotAxis == 2){
+						rotAxis = Math.floor(random(0,1));
+					}
+					phase = 0;
+					rotations--;
+					startTime = x;
+				}
+				else {
+					phase = (x-startTime)*20;
+					if(rotAxis == 0){
+						die.rot = [oldRot[0]+90*phase,oldRot[1],oldRot[2]];
+					}
+					else if(rotAxis == 1){
+						die.rot = [oldRot[0],oldRot[1]+90*phase,oldRot[2]];
+					}
+					else if(rotAxis == 2){
+						die.rot = [oldRot[0],oldRot[1],oldRot[2]+90*phase];
+					}
+				}
+			}
+		}
+		
+		else if (mode == MODE.MOVE) {
+			gl.clearColor(0.3,0.7,1.0,1);
+			gl.clear(gl.COLOR_BUFFER_BIT+gl.DEPTH_BUFFER_BIT);
+			if(moves > 0){
+				if(phase >= 1){
+					moves--;
+					if(pawns[selectedPawn].tile < 0){
+						moves = 0;
+					}
+					pawns[selectedPawn].tile = destinationTile;
+					pawnsAhead = isPawnAhead(pawns[selectedPawn]);
+					destinationTile++;
+					if(moves > 1 && pawnsAhead.length > 0){
+						destinationTile++;
+						moves--;
+					}
+					else if(moves == 1 && pawnsAhead.length > 0){
+						if(pawns[selectedPawn].pawnBody.color[0] != pawns[pawnsAhead[0]].pawnBody.color[0]){
+							for(var p = 0; p < pawnsAhead.length; p++){
+								movePawn(pawns[pawnsAhead[p]], [0,0,0], pawns[pawnsAhead[p]].homePos, 1);
+								pawns[pawnsAhead[p]].tile = -1;
+							}
+						}
+					}
+					pawnsAhead = [];
+					phase = 0;
+					startTime=x;
+				}
+				else{
+					phase = (x-startTime)*2;
+					if(phase > 1){
+						phase = 1;
+					}
+					if(pawns[selectedPawn].tile < 0){
+						movePawn(pawns[selectedPawn], pawns[selectedPawn].homePos, pawns[selectedPawn].startPos, phase);
+					}
+					else{
+						switch(turn){
+							case "RED":
+								movePawn(pawns[selectedPawn], tiles[RED_PATH[pawns[selectedPawn].tile]].position,tiles[RED_PATH[destinationTile]].position,phase);break;
+								case "GREEN":
+									movePawn(pawns[selectedPawn], tiles[GREEN_PATH[pawns[selectedPawn].tile]].position,tiles[GREEN_PATH[destinationTile]].position,phase);break;
+									case "YELLOW":
+										movePawn(pawns[selectedPawn], tiles[YELLOW_PATH[pawns[selectedPawn].tile]].position,tiles[YELLOW_PATH[destinationTile]].position,phase);break;
+										case "BLUE":
+											movePawn(pawns[selectedPawn], tiles[BLUE_PATH[pawns[selectedPawn].tile]].position,tiles[BLUE_PATH[destinationTile]].position,phase);break;
+							}
+						}
+					}
+					
+					for (var i=0; i<tiles.length; i++)
+					{
+						tiles[i].draw();
+					}
+				}
+				else{
+					phase = 0;
+					startTime = x;
+					oldRot = die.rot;
+					rotations = Math.floor(random(10,15));
+					if(points != 6){
+						switch(turn){
+							case "RED":turn=RED_NEXT;break;
+							case "GREEN":turn=GREEN_NEXT;break;
+							case "YELLOW":turn=YELLOW_NEXT;break;
+							case "BLUE":turn=BLUE_NEXT;break;
+						}
+					}
+					changeTurnField();
+					mode = MODE.THROWDIE;						
+				}
+			}
+			
+			
+			gl.uniform3f(uDiffuseColor,sceneLightings[scene][0][0],sceneLightings[scene][0][1],sceneLightings[scene][0][2]);
+			gl.uniform3f(uAmbientColor,sceneLightings[scene][1][0],sceneLightings[scene][1][1],sceneLightings[scene][1][2]);
+			ground.draw();
+			if(scene == 1){
+				pushMatrix();
+				translate([3.2,3,0]);
+				Palm(-120,1+sin(1.5*x)/70);
+				popMatrix();
+				pushMatrix();
+				translate([-3,-3.2,0]);
+				Palm(60,0.7+sin(1.5*x)/70);
+				popMatrix();
+			}
+			else if (scene == 2){
+				gl.uniform3f(uAmbientColor,1,1,1);
+				gl.uniform3f(uDiffuseColor,1,1,1);
+				snowball = new Sphere([0,0,0],0.5);
+				snowball.color = [1,1,1];
+				pushMatrix();
+				translate([4,3*sin(x/15),4*Math.abs(cos(x/15))]);
+				snowball.draw();
+				translate([3,-6*sin(x/15),0]);
+				snowball.draw();
+				popMatrix();
+				pushMatrix();
+				translate([3*sin(x/15),4,4*Math.abs(cos(x/15))]);
+				snowball.draw();
+				translate([-6*sin(x/15),3,0]);
+				snowball.draw();
+				popMatrix();
+				pushMatrix();
+				translate([-4,3*sin(x/15),4*Math.abs(cos(x/15))]);
+				snowball.draw();
+				translate([-3,-6*sin(x/15),0]);
+				snowball.draw();
+				popMatrix();
+				pushMatrix();
+				translate([3*sin(x/15),-4,4*Math.abs(cos(x/15))]);
+				snowball.draw();
+				translate([-6*sin(x/15),-3,0]);
+				snowball.draw();
+				popMatrix();
+			}
+
+			gl.uniform3f(uAmbientColor,0.7,0.7,0.7);
+			gl.uniform3f(uDiffuseColor,0.3,0.3,0.3);
+
+			for(var i = 0; i < pawns.length; i++){
+				pawns[i].draw();
+			}
+			gl.uniform3f(uAmbientColor,1,1,1);
+			gl.uniform3f(uDiffuseColor,0,0,0);
+			
+			popMatrix();
+
+			pushMatrix();
+			translate([60,0,0]);
+			sky[0].draw();
+			popMatrix();
+			pushMatrix();
+			translate([0,-60,0]);
+			sky[1].draw();			
+			popMatrix();
+			pushMatrix();
+			translate([-60,0,0]);
+			sky[2].draw();			
+			popMatrix();
+			pushMatrix();
+			translate([0,60,0]);
+			sky[3].draw();			
+			popMatrix();
+			pushMatrix();
+			translate([0,0,60]);
+			xRotate(180);
+			sky[4].draw();			
+			popMatrix();
+			pushMatrix();
+			zRotate(180);
+			translate([0,0,-60]);
+			sky[5].draw();			
+			popMatrix();
+
+			requestAnimationFrame(drawFrame);
+		}
+		
+		function click(event) {
+			clicked = true;
+		}
+
+		function restart() {
+			var selectedTheme = document.getElementById("scenes");
+			for(i = 0; i < selectedTheme.length; i++){
+				if(selectedTheme[i].selected == true){
+					scene = i;
+					setSceneColors(scene);
+					changeTurnField();
+				}
+			}
+		}
+
+		function changeTurnField() {
+			var turnElem = document.getElementById("currentColor");
+			var colorId = 0;
+			switch(turn){
+				case "RED":colorId = 0;break;
+				case "GREEN":colorId = 1;break;
+				case "YELLOW":colorId = 2;break;
+				case "BLUE":colorId = 3;break;
+			}
+			turnElem.textContent = pawnColorNames[scene][colorId];
+		}
+	</script>
+</head>
+
+<body onload="start()">
+	<h1>"Не се сърди човече" - курсов проект по WebGL</h1>
+	
+	<noscript>
+		Искаме JavaScript, но няма!
+	</noscript>
+	
+	<div style="display: flex; justify-content: space-between;">
+		<div style="width: 30%">
+			<h2 style="text-align: left; margin-bottom: 0.2em;">Избор на сцена</h2>
+			<select name="scenes" id="scenes">
+				<option value="0">поляна</option>
+				<option value="1">плаж</option>
+				<option value="2">планина</option>
+			</select>
+			<button id="resetBtn" onclick="restart()">приложи</button>
+		</div>
+		<div>
+			<canvas id="picasso" width="650" height="650">
+				Искаме canvas, но няма!
+			</canvas>
+		</div>
+		<div style="width: 30%">
+			<h3>На ход са: </h3>
+			<h2 id="currentColor">ЧЕРВЕНИ</h2>
+			<hr style="margin-left: 5%; margin-right: 5%;"/>
+			<h3>Инструкции</h3>
+			<h4 style="text-align: justify; margin: 10%;">Натиснете зарчето за хвърляне.<br/><br/>
+				 Изберете от осветените полета за придвижване до полето<br/><br/>
+				 Може да смените сцената от менюто вляво, промените се прилагат от бутон "Приложи"<br/><br/>
+				 Приятна игра! :)</h4>
+		</div>
+	</div>
+</body>
